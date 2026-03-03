@@ -59,7 +59,27 @@ Berdasarkan statistik input/output (I/O) tiap interval 10 detik, pertandingan di
 - Lalu lintas stabil di angka rata-rata 400 - 800 paket per 10 detik dan memakan bandwidth kurang lebih 25KB hingga 50KB setiap detiknya.
 - *Match* terus berlanjut hingga detik ke-360+ (akhir tangkapan layar/capture), menandakan pertandingan berdurasi minimal 6 menit.
 
-## 5. Kesimpulan
+## 5. Analisis Mendalam Payload Protokol
+
+Untuk memahami bagaimana aplikasi (*client*) dan server game berinteraksi di tingkat byte, dilakukan analisis *deep inspection* pada payload koneksi utama (`103.242.150.39` port `14014`).
+
+### A. Ekstraksi dan Analisis *Magic Bytes* / Handshake
+Banyak protokol game *proprietary* yang menyertakan penanda spesifik (*magic bytes*) atau versi permainan di awal koneksi. Berdasarkan ekstraksi Hex dan ASCII dari inisiasi paket UDP, ditemukan:
+- **String Pengenal**: Saat string payload pertama dibalik (*reversed payload*), ditemukan teks berbunyi: `mOBILE lEGENDS.tHE bEST moba.`. Ini digunakan sebagai *handshake* awal antara client dan server untuk memverifikasi keabsahan client.
+- **Versi Protokol/Game**: Ditemukan *plain-text* berupa versi build: `1.2.58.264.1G`, yang divalidasi oleh server sebelum masuk ke fase permainan.
+- **Autentikasi Session**: Terdapat string yang di-*encode* Base64 berukuran besar, yang diindikasikan sebagai token sesi atau *player credential* yang dikirimkan pada awal *match*.
+
+### B. Distribusi Ukuran Payload (Packet Size)
+Game online memerlukan optimasi yang tinggi terkait *bandwidth*. Dari analisis distribusi ukuran payload data yang lewat:
+- Pada **UDP** (yang merupakan tulang punggung aliran game *state*): mayoritas ukuran total data UDP di-pack sangat kecil, yaitu berukuran di bawah 50 *bytes* (akumulasi ratusan ribu kali selama *match*). Ini mencerminkan pengiriman posisi koordinat unit (*chess pieces*) atau *keep-alive pings*.
+- Pada **TCP** (jalur kontrol yang reliabel): paket paling dominan adalah paket yang tidak memiliki payload data (0 byte, yang hanya berisi *ACK flag*) atau paket data kecil 20 *bytes*. Ini menegaskan TCP hanya digunakan sebagai sinyal kendali (memastikan UDP state sinkron, transaksi *item*, atau penalti koneksi/reconnect).
+
+### C. Frekuensi Pembaruan dan Waktu antar Paket (Inter-Arrival Time / Tick-rate)
+Pola waktu transmisi (*time delta* rata-rata antar paket) dalam koneksi UDP (protokol In-Game) menunjukkan:
+- **Dari Server ke Aplikasi (*Downlink*)**: Paket dikirim dengan rata-rata interval **~0.021 detik**. Hal ini menunjukkan *server tick rate* berada di sekitar **47 Hz** (47 *updates* per detik).
+- **Dari Aplikasi ke Server (*Uplink*)**: Paket dikirim dari perangkat pengguna dengan rata-rata interval yang sangat agresif, yakni **~0.010 detik** (~100 paket *polling*/*status report* per detik). Ini untuk memastikan responsivitas game (*zero input lag*) selama fase pertempuran *auto-battler*.
+
+## 6. Kesimpulan
 1. **Aplikasi Game**: Magic Chess: GO GO.
 2. **IP Game Server (In-Match)**:
    - Server Utama: `103.242.150.39` pada port `14014`.
